@@ -3,7 +3,7 @@ import requests
 
 # --- CONFIGURATION ---
 # Replace with your Hugging Face Token (Keep this private!)
-HF_TOKEN = "your_hugging_face_token_here"
+HF_TOKEN = "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"
 API_URL = "https://api-inference.huggingface.co/models/HuggingFaceH4/zephyr-7b-beta"
 headers = {"Authorization": f"Bearer {HF_TOKEN}"}
 
