@@ -1,180 +1,78 @@
-import re
 import streamlit as st
+import re
 
-st.set_page_config(page_title="AidLynx", layout="centered")
-
-WELCOME = (
-    "Welcome to AidLynx.\n\n"
-    "This site provides general health information and basic first-aid guidance in English.\n"
-    "It does not diagnose diseases and is not a substitute for a doctor."
+# 1. Page Configuration
+st.set_page_config(
+    page_title="AidLynx: Medical & First-Aid Assistant",
+    page_icon="🚑",
+    layout="wide"
 )
 
-DISCLAIMER = (
-    "Medical disclaimer: This is general information, not medical diagnosis or treatment. "
-    "If symptoms are severe, worsening, or you suspect an emergency, contact local emergency services immediately."
-)
-
-# Emergency signals (simple keyword screening)
-RED_FLAGS = [
-    "not breathing", "stopped breathing", "unconscious", "unresponsive",
-    "severe bleeding", "bleeding won't stop", "chest pain", "pressure in chest",
-    "stroke", "face droop", "slurred speech", "one sided weakness",
-    "seizure", "convulsion", "blue lips", "severe burn", "severe allergic",
-    "anaphylaxis", "suicidal", "self harm"
-]
-
-# A broad condition library (you can keep adding names here)
-CONDITIONS = {
-    # Respiratory / ENT
-    "common cold": "Usually mild viral illness. Focus: rest, fluids, monitor breathing.",
-    "influenza (flu)": "Often fever/body aches. Seek care if high-risk or worsening.",
-    "sinusitis": "Facial pressure + congestion can occur. Seek care if severe/persistent.",
-    "sore throat": "Often viral; watch for trouble swallowing/breathing.",
-    "tonsillitis": "Throat pain; seek care if high fever, dehydration, or breathing issues.",
-    "bronchitis": "Cough; seek care if shortness of breath or high fever.",
-    "pneumonia": "Can be serious. Seek medical evaluation if fever + breathing difficulty.",
-    "asthma flare": "Wheezing/shortness of breath. Urgent care if severe breathing trouble.",
-    "allergic rhinitis": "Sneezing/runny nose; avoid triggers when possible.",
-
-    # Gastro / hydration
-    "gastroenteritis": "Vomiting/diarrhea; focus on hydration, watch dehydration signs.",
-    "food poisoning": "GI symptoms after food; hydrate, seek care if blood/high fever.",
-    "diarrhea": "Hydration is key; urgent care if blood, severe pain, dehydration.",
-    "constipation": "Often diet/fluids/activity-related; seek care if severe pain.",
-    "acid reflux (gerd)": "Burning after meals; seek care for chest pain or red flags.",
-    "peptic ulcer": "Stomach pain; urgent care if black stools or vomiting blood.",
-
-    # Skin
-    "eczema": "Itchy, inflamed skin; avoid irritants; seek care if infected.",
-    "contact dermatitis": "Rash after exposure; remove trigger; seek care if severe swelling.",
-    "fungal skin infection": "Itchy scaling; keep area clean/dry; clinician if spreading.",
-    "acne": "Common; seek dermatology if painful/scarring.",
-    "cellulitis": "Spreading redness/warmth can be serious; medical evaluation needed.",
-    "hives (urticaria)": "Itchy welts; urgent care if swelling of lips/tongue/breathing trouble.",
-
-    # Fever-region specific examples (still general)
-    "dengue": "Fever with body aches; urgent care for bleeding, severe abdominal pain, fainting.",
-    "malaria": "Fever with chills; needs testing; seek medical evaluation promptly.",
-    "typhoid": "Prolonged fever; needs clinician evaluation.",
-    "tuberculosis (tb)": "Chronic cough/weight loss/night sweats; needs clinician testing.",
-
-    # Urinary / reproductive (general, non-diagnostic)
-    "urinary tract infection (uti)": "Burning/frequency; urgent care if fever/flank pain/pregnancy.",
-    "kidney stone": "Severe side pain; urgent care if fever/vomiting/uncontrolled pain.",
-
-    # Chronic / metabolic (education only)
-    "diabetes": "Long-term condition; urgent care for confusion, severe weakness, fainting.",
-    "hypertension": "Often no symptoms; urgent care for severe headache/chest pain/neurologic signs.",
-
-    # Neuro
-    "tension headache": "Often band-like pressure; urgent care if sudden worst headache.",
-    "migraine": "Throbbing headache + sensitivity; urgent care for weakness/confusion.",
-    "vertigo": "Spinning sensation; urgent care if stroke-like signs.",
-
-    # Injuries / first aid topics (not diseases, but requested first-aid)
-    "cut / wound": "Control bleeding, clean, cover; urgent care if deep or won’t stop bleeding.",
-    "burn": "Cool with running water, protect; urgent care for large/deep/chemical burns.",
-    "sprain": "Rest/ice/compression/elevation; seek care if cannot bear weight.",
-    "fracture": "Immobilize; urgent care if deformity/severe pain/poor circulation.",
-    "nosebleed": "Lean forward, pinch soft nose; urgent care if heavy >20 min."
+# 2. Knowledge Base (Descriptions & First Aid)
+KNOWLEDGE_BASE = {
+    "choking": {
+        "desc": "Airway obstruction by a foreign object.",
+        "aid": "1. Perform Heimlich maneuver (abdominal thrusts). 2. Call emergency services. 3. If unconscious, start CPR."
+    },
+    "heart attack": {
+        "desc": "Blood flow to the heart is blocked.",
+        "aid": "1. Call emergency services immediately. 2. Have person sit/lie down. 3. Give aspirin if not allergic."
+    },
+    "heat stroke": {
+        "desc": "Body overheating due to prolonged exposure to high heat.",
+        "aid": "1. Move to a cool place. 2. Cool with water/ice packs. 3. Do NOT give fluids if they are confused."
+    },
+    "diabetes / low blood sugar": {
+        "desc": "Hypoglycemia (too much insulin or not enough food).",
+        "aid": "1. If conscious, give 15g of fast-acting sugar (soda, juice, candy). 2. Wait 15 mins, repeat if needed."
+    },
+    "seizure": {
+        "desc": "Sudden electrical disturbance in the brain.",
+        "aid": "1. Clear the area of sharp objects. 2. Place something soft under the head. 3. Do NOT restrain or put objects in mouth."
+    }
 }
 
-def normalize(s: str) -> str:
-    s = (s or "").strip().lower()
-    s = re.sub(r"\s+", " ", s)
-    return s
+# 3. Emergency Signals
+RED_FLAGS = ["unconscious", "chest pain", "bleeding heavily", "not breathing", "stroke", "poisoning"]
 
-def looks_like_emergency(text: str) -> bool:
-    t = normalize(text)
-    return any(flag in t for flag in RED_FLAGS)
+# 4. Logic Functions
+def check_emergency(text):
+    text = text.lower()
+    return any(flag in text for flag in RED_FLAGS)
 
-def best_condition_match(text: str):
-    t = normalize(text)
-    # simple matching: exact key contained in user text
-    for k in CONDITIONS.keys():
-        if k in t:
-            return k
-    return None
+def get_advice(user_input):
+    user_input = user_input.lower()
+    
+    # Priority 1: Emergency Red Flags
+    if check_emergency(user_input):
+        return "🚨 **EMERGENCY DETECTED** 🚨\nStop what you are doing and **Call 911 / Local Emergency Services** immediately. Do not wait for this app to finish."
 
-def safe_reply(user_text: str) -> str:
-    if looks_like_emergency(user_text):
-        return (
-            f"{DISCLAIMER}\n\n"
-            "This may be an emergency.\n"
-            "- Contact your local emergency number now.\n"
-            "- If the person is unconscious or not breathing, get emergency help immediately.\n"
-            "- If there is severe bleeding, apply firm pressure with a clean cloth while help is coming."
-        )
+    # Priority 2: Knowledge Match
+    for condition, data in KNOWLEDGE_BASE.items():
+        if condition in user_input:
+            return f"### {condition.title()}\n**Description:** {data['desc']}\n\n**First Aid Steps:**\n{data['aid']}"
 
-    match = best_condition_match(user_text)
-    if match:
-        return (
-            f"{DISCLAIMER}\n\n"
-            f"Topic: {match.title()}\n"
-            f"- General info: {CONDITIONS[match]}\n"
-            "- Seek urgent care now if you have trouble breathing, chest pain, fainting, severe bleeding, "
-            "severe dehydration, confusion, or symptoms that rapidly worsen.\n"
-            "- Helpful details to share: age, duration, fever (temperature), current medicines, major illnesses."
-        )
+    return "I'm sorry, I don't have specific first aid for that. Please seek a medical professional or try keywords like 'Choking' or 'Heat Stroke'."
 
-    return (
-        f"{DISCLAIMER}\n\n"
-        "Choose a menu option (left) or describe symptoms.\n"
-        "For best guidance, include: age, main symptoms, when it started, fever temperature (if any), "
-        "known conditions, and current medicines."
-    )
+# 5. UI Layout
+st.title("🚑 AidLynx Assistant")
+st.markdown("---")
 
-# UI
-st.title("AidLynx")
-st.write(WELCOME)
+col1, col2 = st.columns([2, 1])
 
-with st.expander("Medical disclaimer"):
-    st.write(DISCLAIMER)
+with col1:
+    st.subheader("How can I help you today?")
+    user_query = st.chat_input("Describe the symptoms or situation...")
+    
+    if user_query:
+        response = get_advice(user_query)
+        st.info(f"**You:** {user_query}")
+        st.success(f"**AidLynx:** \n{response}")
 
-# Sidebar menu buttons
-st.sidebar.header("Menu")
-st.sidebar.caption("Tap a button to start quickly.")
-
-MENU = [
-    ("Fever", "I have fever. What should I do?"),
-    ("Cough / cold", "I have cough and cold symptoms."),
-    ("Sore throat", "I have sore throat."),
-    ("Diarrhea", "I have diarrhea."),
-    ("Vomiting", "I have vomiting."),
-    ("Headache", "I have headache."),
-    ("Allergy / hives", "I have allergy or hives."),
-    ("Burn", "I got a burn. First aid steps?"),
-    ("Cut / bleeding", "I have a cut and bleeding. First aid steps?"),
-    ("Sprain", "I twisted my ankle. First aid steps?"),
-]
-
-if "messages" not in st.session_state:
-    st.session_state.messages = [{"role": "assistant", "content": safe_reply("hello")}]
-
-def push_user_message(text: str):
-    st.session_state.messages.append({"role": "user", "content": text})
-    st.session_state.messages.append({"role": "assistant", "content": safe_reply(text)})
-
-for label, prompt in MENU:
-    if st.sidebar.button(label, use_container_width=True):
-        push_user_message(prompt)
-
-st.sidebar.divider()
-st.sidebar.subheader("Condition library")
-query = st.sidebar.text_input("Search (e.g., asthma, dengue, uti)")
-q = normalize(query)
-matches = [k for k in CONDITIONS.keys() if q and q in k]
-if matches:
-    pick = st.sidebar.selectbox("Select", matches[:30])
-    if st.sidebar.button("Show info", use_container_width=True):
-        push_user_message(f"Tell me about {pick}.")
-
-# Chat transcript
-for m in st.session_state.messages:
-    with st.chat_message(m["role"]):
-        st.markdown(m["content"])
-
-text = st.chat_input("Type your question in English...")
-if text:
-    push_user_message(text)
-    st.rerun()
+with col2:
+    st.warning("**Disclaimer:** This tool provides general guidance. It is NOT a substitute for professional medical advice, diagnosis, or treatment.")
+    st.subheader("Common Topics")
+    for key in KNOWLEDGE_BASE.keys():
+        if st.button(key.title()):
+            st.write(f"**Description:** {KNOWLEDGE_BASE[key]['desc']}")
+            st.write(f"**Aid:** {KNOWLEDGE_BASE[key]['aid']}")
