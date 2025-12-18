@@ -1,78 +1,63 @@
 import streamlit as st
-import re
+import requests
 
-# 1. Page Configuration
-st.set_page_config(
-    page_title="AidLynx: Medical & First-Aid Assistant",
-    page_icon="🚑",
-    layout="wide"
-)
+# --- CONFIGURATION ---
+# Replace with your Hugging Face Token (Keep this private!)
+HF_TOKEN = "your_hugging_face_token_here"
+API_URL = "https://api-inference.huggingface.co/models/HuggingFaceH4/zephyr-7b-beta"
+headers = {"Authorization": f"Bearer {HF_TOKEN}"}
 
-# 2. Knowledge Base (Descriptions & First Aid)
-KNOWLEDGE_BASE = {
-    "choking": {
-        "desc": "Airway obstruction by a foreign object.",
-        "aid": "1. Perform Heimlich maneuver (abdominal thrusts). 2. Call emergency services. 3. If unconscious, start CPR."
-    },
-    "heart attack": {
-        "desc": "Blood flow to the heart is blocked.",
-        "aid": "1. Call emergency services immediately. 2. Have person sit/lie down. 3. Give aspirin if not allergic."
-    },
-    "heat stroke": {
-        "desc": "Body overheating due to prolonged exposure to high heat.",
-        "aid": "1. Move to a cool place. 2. Cool with water/ice packs. 3. Do NOT give fluids if they are confused."
-    },
-    "diabetes / low blood sugar": {
-        "desc": "Hypoglycemia (too much insulin or not enough food).",
-        "aid": "1. If conscious, give 15g of fast-acting sugar (soda, juice, candy). 2. Wait 15 mins, repeat if needed."
-    },
-    "seizure": {
-        "desc": "Sudden electrical disturbance in the brain.",
-        "aid": "1. Clear the area of sharp objects. 2. Place something soft under the head. 3. Do NOT restrain or put objects in mouth."
+st.set_page_config(page_title="MediVault AI", page_icon="💊", layout="centered")
+
+# --- UI DESIGN ---
+st.title("💊 MediVault AI: Disease & Medication Assistant")
+st.markdown("""
+This assistant provides detailed information on **100+ diseases**, including descriptions, 
+treatments, and commonly used medications. 
+""")
+
+st.error("**Important Disclaimer:** This is an AI tool. Medication should only be taken under the supervision of a licensed doctor. Never self-medicate for serious conditions.")
+
+# --- EMERGENCY DETECTION ---
+EMERGENCY_WORDS = ["heart attack", "stroke", "bleeding heavily", "unconscious", "cannot breathe"]
+
+def query_ai(prompt):
+    """Sends user query to the medical-tuned AI model"""
+    # System instruction to ensure it acts as a medical assistant
+    payload = {
+        "inputs": f"<|system|>\nYou are a professional medical assistant. Provide clear descriptions, common treatments, and specific medications for diseases. Always include a disclaimer that a doctor must be consulted.\n<|user|>\n{prompt}\n<|assistant|>\n",
+        "parameters": {"max_new_tokens": 500, "temperature": 0.7}
     }
-}
+    response = requests.post(API_URL, headers=headers, json=payload)
+    return response.json()[0]['generated_text'].split("<|assistant|>\n")[-1]
 
-# 3. Emergency Signals
-RED_FLAGS = ["unconscious", "chest pain", "bleeding heavily", "not breathing", "stroke", "poisoning"]
+# --- CHAT INTERFACE ---
+if "messages" not in st.session_state:
+    st.session_state.messages = []
 
-# 4. Logic Functions
-def check_emergency(text):
-    text = text.lower()
-    return any(flag in text for flag in RED_FLAGS)
+# Display chat history
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
 
-def get_advice(user_input):
-    user_input = user_input.lower()
-    
-    # Priority 1: Emergency Red Flags
-    if check_emergency(user_input):
-        return "🚨 **EMERGENCY DETECTED** 🚨\nStop what you are doing and **Call 911 / Local Emergency Services** immediately. Do not wait for this app to finish."
+# User Input
+if prompt := st.chat_input("Ask about a disease (e.g., 'What is the treatment and medication for Typhoid?')"):
+    # Add user message to history
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    with st.chat_message("user"):
+        st.markdown(prompt)
 
-    # Priority 2: Knowledge Match
-    for condition, data in KNOWLEDGE_BASE.items():
-        if condition in user_input:
-            return f"### {condition.title()}\n**Description:** {data['desc']}\n\n**First Aid Steps:**\n{data['aid']}"
+    # Check for emergency
+    if any(word in prompt.lower() for word in EMERGENCY_WORDS):
+        bot_response = "🚨 **EMERGENCY:** This sounds like a life-threatening situation. Please call your local emergency number (e.g., 911) immediately."
+    else:
+        with st.spinner("Analyzing medical database..."):
+            try:
+                bot_response = query_ai(prompt)
+            except Exception as e:
+                bot_response = "I'm having trouble connecting to the database. Please try again in a moment."
 
-    return "I'm sorry, I don't have specific first aid for that. Please seek a medical professional or try keywords like 'Choking' or 'Heat Stroke'."
-
-# 5. UI Layout
-st.title("🚑 AidLynx Assistant")
-st.markdown("---")
-
-col1, col2 = st.columns([2, 1])
-
-with col1:
-    st.subheader("How can I help you today?")
-    user_query = st.chat_input("Describe the symptoms or situation...")
-    
-    if user_query:
-        response = get_advice(user_query)
-        st.info(f"**You:** {user_query}")
-        st.success(f"**AidLynx:** \n{response}")
-
-with col2:
-    st.warning("**Disclaimer:** This tool provides general guidance. It is NOT a substitute for professional medical advice, diagnosis, or treatment.")
-    st.subheader("Common Topics")
-    for key in KNOWLEDGE_BASE.keys():
-        if st.button(key.title()):
-            st.write(f"**Description:** {KNOWLEDGE_BASE[key]['desc']}")
-            st.write(f"**Aid:** {KNOWLEDGE_BASE[key]['aid']}")
+    # Add bot response to history
+    st.session_state.messages.append({"role": "assistant", "content": bot_response})
+    with st.chat_message("assistant"):
+        st.markdown(bot_response)
